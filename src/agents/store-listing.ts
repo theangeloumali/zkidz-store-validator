@@ -195,6 +195,100 @@ export const storeListingAgent: ValidationAgent = {
       });
     }
 
+    // ── listing.description-present ───────────────────────────────────────
+    {
+      if (config.storeListingPath) {
+        const content = readTextFile(config.storeListingPath);
+        if (content !== null) {
+          // Look for a description section (markdown heading or JSON key)
+          const descriptionMatch =
+            content.match(
+              /(?:^#+\s*description\s*\n)([\s\S]*?)(?=\n#+\s|\n---|\z)/im,
+            ) ?? content.match(/"description"\s*:\s*"([^"]+)"/i);
+
+          const descriptionText = descriptionMatch
+            ? descriptionMatch[1].trim()
+            : content.trim();
+
+          if (descriptionText.length < 80) {
+            results.push({
+              id: "listing.description-present",
+              agent: "store-listing",
+              severity: "WARN",
+              title: "Store description length",
+              message: `Store description is ${descriptionText.length} characters (minimum recommended: 80).`,
+              docs: "https://support.google.com/googleplay/android-developer/answer/9859152",
+            });
+          } else {
+            results.push({
+              id: "listing.description-present",
+              agent: "store-listing",
+              severity: "PASS",
+              title: "Store description length",
+              message: `Store description is ${descriptionText.length} characters.`,
+            });
+          }
+        } else {
+          results.push({
+            id: "listing.description-present",
+            agent: "store-listing",
+            severity: "WARN",
+            title: "Store description length",
+            message: `Could not read store listing file at ${config.storeListingPath}.`,
+          });
+        }
+      } else {
+        results.push({
+          id: "listing.description-present",
+          agent: "store-listing",
+          severity: "SKIP",
+          title: "Store description length",
+          message: "No storeListingPath configured.",
+        });
+      }
+    }
+
+    // ── listing.app-name-special-chars ────────────────────────────────────
+    {
+      // Check for emoji, special unicode, or excessive punctuation
+      const emojiPattern =
+        /[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{1F1E0}-\u{1F1FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/u;
+      const excessivePunctuation = /[!@#$%^&*(){}\[\]<>]{2,}/;
+      const specialUnicode =
+        /[\u{200B}-\u{200F}\u{2028}-\u{202F}\u{2060}-\u{206F}\u{FE00}-\u{FE0F}\u{FFF0}-\u{FFFF}]/u;
+
+      const name = config.appName;
+      const issues: string[] = [];
+
+      if (emojiPattern.test(name)) {
+        issues.push("emoji");
+      }
+      if (specialUnicode.test(name)) {
+        issues.push("special unicode characters");
+      }
+      if (excessivePunctuation.test(name)) {
+        issues.push("excessive punctuation");
+      }
+
+      if (issues.length > 0) {
+        results.push({
+          id: "listing.app-name-special-chars",
+          agent: "store-listing",
+          severity: "WARN",
+          title: "App name special characters",
+          message: `App name "${name}" contains ${issues.join(", ")} which stores may reject.`,
+        });
+      } else {
+        results.push({
+          id: "listing.app-name-special-chars",
+          agent: "store-listing",
+          severity: "PASS",
+          title: "App name special characters",
+          message: `App name "${name}" has no problematic special characters.`,
+        });
+      }
+    }
+
     return results;
   },
 };

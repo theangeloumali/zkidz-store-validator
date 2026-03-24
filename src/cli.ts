@@ -22,7 +22,7 @@ import {
   printSummary,
   formatJsonOutput,
 } from "./reporter.js";
-import { bold, red } from "./utils.js";
+import { bold, dim, red } from "./utils.js";
 
 function parseArgs(argv: string[]): CliArgs {
   const args: CliArgs = {
@@ -69,6 +69,7 @@ function parseArgs(argv: string[]): CliArgs {
 function printHelp(): void {
   console.log(`
 ${bold("store-validator")} — Pre-submission validation for App Store & Play Store
+${dim("by ZKidz Dev")}
 
 ${bold("USAGE")}
   npx store-validator [options]
@@ -94,6 +95,9 @@ ${bold("EXAMPLES")}
   npx store-validator --json             # JSON output for CI
   npx store-validator --platform expo    # Force Expo adapter
   npx store-validator --cwd /path/to/app # Validate a different directory
+
+  ${dim("Built by ZKidz Dev")}
+  ${dim("https://github.com/theangeloumali/zkidz-store-validator")}
 `);
 }
 

@@ -12,6 +12,7 @@ import {
   grepSourceFiles,
   parsePlist,
   readJsonFile,
+  readTextFile,
 } from "../utils.js";
 
 const AGENT = "ios-compliance";
@@ -550,6 +551,224 @@ export const iosComplianceAgent: ValidationAgent = {
         severity: "PASS",
         title: "Required device capabilities",
         message: "No restrictive device capabilities declared",
+      });
+    }
+
+    // 16. Info.plist required keys
+    if (ios.infoPlistPath) {
+      const plist = parsePlist(ios.infoPlistPath);
+      if (plist) {
+        const requiredKeys = [
+          "CFBundleIdentifier",
+          "CFBundleName",
+          "CFBundleVersion",
+          "CFBundleShortVersionString",
+        ];
+        const missingKeys = requiredKeys.filter((key) => !(key in plist));
+
+        if (missingKeys.length > 0) {
+          for (const key of missingKeys) {
+            results.push({
+              id: "ios.info-plist-required-keys",
+              agent: AGENT,
+              severity: "FAIL",
+              title: "Info.plist required key",
+              message: `Required key "${key}" is missing from Info.plist`,
+              docs: "https://developer.apple.com/documentation/bundleresources/information_property_list",
+            });
+          }
+        } else {
+          results.push({
+            id: "ios.info-plist-required-keys",
+            agent: AGENT,
+            severity: "PASS",
+            title: "Info.plist required keys",
+            message:
+              "All required keys present (CFBundleIdentifier, CFBundleName, CFBundleVersion, CFBundleShortVersionString)",
+          });
+        }
+      } else {
+        results.push({
+          id: "ios.info-plist-required-keys",
+          agent: AGENT,
+          severity: "WARN",
+          title: "Info.plist required keys",
+          message: `Could not parse Info.plist at ${ios.infoPlistPath}`,
+        });
+      }
+    } else {
+      results.push({
+        id: "ios.info-plist-required-keys",
+        agent: AGENT,
+        severity: "SKIP",
+        title: "Info.plist required keys",
+        message: "No infoPlistPath configured",
+      });
+    }
+
+    // 17. Push notification entitlements
+    {
+      const pushPattern =
+        /registerForRemoteNotifications|UNUserNotificationCenter|PushNotifications|requestPermission.*notification|pushNotification/i;
+      const usesPush = grepSourceFiles(config.sourceCodeDirs, pushPattern);
+
+      if (usesPush) {
+        if (ios.entitlementsPath && fileExists(ios.entitlementsPath)) {
+          const entitlements = parsePlist(ios.entitlementsPath);
+          if (entitlements && "aps-environment" in entitlements) {
+            results.push({
+              id: "ios.push-entitlements",
+              agent: AGENT,
+              severity: "PASS",
+              title: "Push notification entitlements",
+              message:
+                "Push notification code detected and aps-environment entitlement is configured",
+            });
+          } else {
+            results.push({
+              id: "ios.push-entitlements",
+              agent: AGENT,
+              severity: "WARN",
+              title: "Push notification entitlements",
+              message:
+                "Push notification code detected but aps-environment key not found in entitlements",
+              docs: "https://developer.apple.com/documentation/usernotifications/registering-your-app-with-apns",
+            });
+          }
+        } else {
+          results.push({
+            id: "ios.push-entitlements",
+            agent: AGENT,
+            severity: "WARN",
+            title: "Push notification entitlements",
+            message:
+              "Push notification code detected but no entitlements file found",
+            docs: "https://developer.apple.com/documentation/usernotifications/registering-your-app-with-apns",
+          });
+        }
+      } else {
+        results.push({
+          id: "ios.push-entitlements",
+          agent: AGENT,
+          severity: "PASS",
+          title: "Push notification entitlements",
+          message: "No push notification code detected in source",
+        });
+      }
+    }
+
+    // 18. URL scheme conflicts
+    if (ios.infoPlistPath) {
+      const plistRaw = readTextFile(ios.infoPlistPath);
+      if (plistRaw) {
+        const systemSchemes = ["http", "https", "tel", "mailto", "sms"];
+        const urlSchemesSection = plistRaw.match(
+          /CFBundleURLSchemes[\s\S]*?<array>([\s\S]*?)<\/array>/,
+        );
+        const conflicting: string[] = [];
+
+        if (urlSchemesSection) {
+          const schemeRegex = /<string>([^<]+)<\/string>/g;
+          let schemeMatch: RegExpExecArray | null;
+          while (
+            (schemeMatch = schemeRegex.exec(urlSchemesSection[1])) !== null
+          ) {
+            const scheme = schemeMatch[1].toLowerCase();
+            if (systemSchemes.includes(scheme)) {
+              conflicting.push(schemeMatch[1]);
+            }
+          }
+        }
+
+        if (conflicting.length > 0) {
+          results.push({
+            id: "ios.url-schemes",
+            agent: AGENT,
+            severity: "WARN",
+            title: "URL scheme conflicts",
+            message: `URL scheme(s) conflict with system schemes: ${conflicting.join(", ")}`,
+            docs: "https://developer.apple.com/documentation/xcode/defining-a-custom-url-scheme-for-your-app",
+          });
+        } else {
+          results.push({
+            id: "ios.url-schemes",
+            agent: AGENT,
+            severity: "PASS",
+            title: "URL scheme conflicts",
+            message: "No URL scheme conflicts with system schemes",
+          });
+        }
+      } else {
+        results.push({
+          id: "ios.url-schemes",
+          agent: AGENT,
+          severity: "WARN",
+          title: "URL scheme conflicts",
+          message: `Could not read Info.plist at ${ios.infoPlistPath}`,
+        });
+      }
+    } else {
+      results.push({
+        id: "ios.url-schemes",
+        agent: AGENT,
+        severity: "SKIP",
+        title: "URL scheme conflicts",
+        message: "No infoPlistPath configured",
+      });
+    }
+
+    // 19. Orientation support
+    if (ios.infoPlistPath) {
+      const orientationPlist = parsePlist(ios.infoPlistPath);
+      if (orientationPlist) {
+        const orientations =
+          orientationPlist["UISupportedInterfaceOrientations"];
+        if (Array.isArray(orientations)) {
+          if (orientations.length === 0) {
+            results.push({
+              id: "ios.orientation-support",
+              agent: AGENT,
+              severity: "WARN",
+              title: "Orientation support",
+              message:
+                "UISupportedInterfaceOrientations is empty (app may not launch)",
+              docs: "https://developer.apple.com/documentation/bundleresources/information_property_list/uisupportedinterfaceorientations",
+            });
+          } else {
+            results.push({
+              id: "ios.orientation-support",
+              agent: AGENT,
+              severity: "PASS",
+              title: "Orientation support",
+              message: `${orientations.length} orientation(s) supported`,
+            });
+          }
+        } else {
+          results.push({
+            id: "ios.orientation-support",
+            agent: AGENT,
+            severity: "PASS",
+            title: "Orientation support",
+            message:
+              "UISupportedInterfaceOrientations not explicitly set (system defaults apply)",
+          });
+        }
+      } else {
+        results.push({
+          id: "ios.orientation-support",
+          agent: AGENT,
+          severity: "WARN",
+          title: "Orientation support",
+          message: `Could not parse Info.plist at ${ios.infoPlistPath}`,
+        });
+      }
+    } else {
+      results.push({
+        id: "ios.orientation-support",
+        agent: AGENT,
+        severity: "SKIP",
+        title: "Orientation support",
+        message: "No infoPlistPath configured",
       });
     }
 

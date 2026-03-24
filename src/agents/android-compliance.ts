@@ -4,7 +4,12 @@ import type {
   RunOptions,
   ValidationAgent,
 } from "../types.js";
-import { fileExists, grepSourceFiles, readJsonFile } from "../utils.js";
+import {
+  fileExists,
+  grepSourceFiles,
+  readJsonFile,
+  readTextFile,
+} from "../utils.js";
 
 const AGENT = "android-compliance";
 
@@ -414,6 +419,187 @@ export const androidComplianceAgent: ValidationAgent = {
             : "Not a web-wrapper app; INTERNET permission is optional",
         });
       }
+    }
+
+    // 15. Backup rules (Android 12+)
+    if (android.manifestPath) {
+      const manifestContent = readTextFile(android.manifestPath);
+      if (manifestContent && android.targetSdkVersion >= 31) {
+        const hasDataExtractionRules = /android:dataExtractionRules/.test(
+          manifestContent,
+        );
+        const hasFullBackupContent = /android:fullBackupContent/.test(
+          manifestContent,
+        );
+
+        if (!hasDataExtractionRules && !hasFullBackupContent) {
+          results.push({
+            id: "android.backup-rules",
+            agent: AGENT,
+            severity: "WARN",
+            title: "Backup rules",
+            message:
+              "Neither android:dataExtractionRules nor android:fullBackupContent found in manifest (recommended for targetSdk 31+)",
+            docs: "https://developer.android.com/about/versions/12/backup-restore",
+          });
+        } else {
+          results.push({
+            id: "android.backup-rules",
+            agent: AGENT,
+            severity: "PASS",
+            title: "Backup rules",
+            message: "Backup/extraction rules configured in manifest",
+          });
+        }
+      } else if (android.targetSdkVersion < 31) {
+        results.push({
+          id: "android.backup-rules",
+          agent: AGENT,
+          severity: "PASS",
+          title: "Backup rules",
+          message: `targetSdkVersion ${android.targetSdkVersion} < 31; explicit backup rules not required`,
+        });
+      } else {
+        results.push({
+          id: "android.backup-rules",
+          agent: AGENT,
+          severity: "SKIP",
+          title: "Backup rules",
+          message: "Could not read AndroidManifest.xml",
+        });
+      }
+    } else {
+      results.push({
+        id: "android.backup-rules",
+        agent: AGENT,
+        severity: "SKIP",
+        title: "Backup rules",
+        message: "No manifestPath configured",
+      });
+    }
+
+    // 16. AAB format recommendation
+    {
+      const isWebWrapper =
+        config.platform === "twa" || config.platform === "capacitor";
+
+      if (isWebWrapper) {
+        results.push({
+          id: "android.aab-format",
+          agent: AGENT,
+          severity: "PASS",
+          title: "AAB format",
+          message:
+            "TWA/Capacitor apps handle AAB format via their build tooling",
+        });
+      } else if (config.platform === "flutter") {
+        const gradlePath = `${config.projectRoot}/android/app/build.gradle`;
+        const gradleContent = readTextFile(gradlePath);
+        const gradleKtsPath = `${config.projectRoot}/android/app/build.gradle.kts`;
+        const gradleKtsContent = readTextFile(gradleKtsPath);
+        const content = gradleContent ?? gradleKtsContent;
+
+        if (content && /bundle/.test(content)) {
+          results.push({
+            id: "android.aab-format",
+            agent: AGENT,
+            severity: "PASS",
+            title: "AAB format",
+            message: "Build configuration includes bundle task for AAB output",
+          });
+        } else {
+          results.push({
+            id: "android.aab-format",
+            agent: AGENT,
+            severity: "WARN",
+            title: "AAB format",
+            message:
+              "Consider using Android App Bundle (AAB) format for Play Store submissions",
+            docs: "https://developer.android.com/guide/app-bundle",
+          });
+        }
+      } else if (config.platform === "expo") {
+        const easPath = `${config.projectRoot}/eas.json`;
+        const easContent = readTextFile(easPath);
+
+        if (easContent && /app-bundle/.test(easContent)) {
+          results.push({
+            id: "android.aab-format",
+            agent: AGENT,
+            severity: "PASS",
+            title: "AAB format",
+            message: "EAS config specifies app-bundle build type",
+          });
+        } else {
+          results.push({
+            id: "android.aab-format",
+            agent: AGENT,
+            severity: "WARN",
+            title: "AAB format",
+            message:
+              'Consider setting buildType to "app-bundle" in eas.json for Play Store submissions',
+            docs: "https://developer.android.com/guide/app-bundle",
+          });
+        }
+      } else {
+        results.push({
+          id: "android.aab-format",
+          agent: AGENT,
+          severity: "WARN",
+          title: "AAB format",
+          message:
+            "Consider using Android App Bundle (AAB) format for Play Store submissions",
+          docs: "https://developer.android.com/guide/app-bundle",
+        });
+      }
+    }
+
+    // 17. Large screens support
+    if (android.manifestPath) {
+      const manifestContent = readTextFile(android.manifestPath);
+      if (manifestContent) {
+        const resizeableMatch = manifestContent.match(
+          /android:resizeableActivity\s*=\s*["'](\w+)["']/,
+        );
+
+        if (resizeableMatch && resizeableMatch[1] === "false") {
+          results.push({
+            id: "android.large-screens",
+            agent: AGENT,
+            severity: "WARN",
+            title: "Large screen support",
+            message:
+              "android:resizeableActivity is set to false. App may be restricted on tablets and foldables",
+            docs: "https://developer.android.com/guide/topics/large-screens/large-screen-compatibility-mode",
+          });
+        } else {
+          results.push({
+            id: "android.large-screens",
+            agent: AGENT,
+            severity: "PASS",
+            title: "Large screen support",
+            message: resizeableMatch
+              ? "android:resizeableActivity is true"
+              : "android:resizeableActivity not explicitly set (defaults to true)",
+          });
+        }
+      } else {
+        results.push({
+          id: "android.large-screens",
+          agent: AGENT,
+          severity: "SKIP",
+          title: "Large screen support",
+          message: "Could not read AndroidManifest.xml",
+        });
+      }
+    } else {
+      results.push({
+        id: "android.large-screens",
+        agent: AGENT,
+        severity: "SKIP",
+        title: "Large screen support",
+        message: "No manifestPath configured",
+      });
     }
 
     return results;

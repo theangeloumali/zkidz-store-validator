@@ -27,9 +27,16 @@ function platformLabel(platform: string): string {
 /** Print the tool header with detected platforms */
 export function printHeader(platforms: string[]): void {
   const platformList = platforms.map(platformLabel).join(" + ");
-  console.log(`${bold(TOOL_NAME)} v${TOOL_VERSION}`);
+  const topBottom = "\u2550".repeat(50);
+  console.log(`\u2554${topBottom}\u2557`);
+  console.log(
+    `\u2551  ${bold(`${TOOL_NAME} v${TOOL_VERSION}`)}${"".padEnd(50 - `  ${TOOL_NAME} v${TOOL_VERSION}`.length)}\u2551`,
+  );
+  console.log(
+    `\u2551  ${dim("by ZKidz Dev")}${"".padEnd(50 - "  by ZKidz Dev".length)}\u2551`,
+  );
+  console.log(`\u255A${topBottom}\u255D`);
   console.log(`Detected: ${platformList}`);
-  console.log(SEPARATOR);
 }
 
 /** Format a severity tag with color */
@@ -113,6 +120,11 @@ export function printSummary(results: CheckResult[]): void {
   } else {
     console.log(green(bold("READY")) + " for store submission");
   }
+  console.log(
+    dim(
+      "  Powered by ZKidz Dev \u2014 github.com/theangeloumali/zkidz-store-validator",
+    ),
+  );
 }
 
 /** Format all results as a JSON string for machine consumption */
@@ -126,6 +138,7 @@ export function formatJsonOutput(
     {
       tool: TOOL_NAME,
       version: TOOL_VERSION,
+      author: "ZKidz Dev",
       platforms,
       results,
       summary,
