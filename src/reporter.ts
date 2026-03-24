@@ -1,8 +1,15 @@
+import * as fs from "node:fs";
+import * as path from "node:path";
 import type { CheckResult, ResultSummary } from "./types.js";
 import { green, yellow, red, bold, dim } from "./utils.js";
 
+const pkgPath = path.resolve(__dirname, "..", "package.json");
+const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8")) as {
+  version: string;
+};
+
 const TOOL_NAME = "store-validator";
-const TOOL_VERSION = "1.0.0";
+const TOOL_VERSION = pkg.version;
 const SEPARATOR = "\u2550".repeat(52);
 
 /** Map platform type to human-readable label */

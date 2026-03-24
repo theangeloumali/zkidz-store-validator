@@ -1,6 +1,12 @@
 #!/usr/bin/env node
 
+import * as fs from "node:fs";
 import * as path from "node:path";
+
+const pkgPath = path.resolve(__dirname, "..", "package.json");
+const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8")) as {
+  version: string;
+};
 import type {
   CliArgs,
   CheckResult,
@@ -95,7 +101,7 @@ async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
 
   if (args.version) {
-    console.log("1.0.0");
+    console.log(pkg.version);
     process.exit(0);
   }
 
