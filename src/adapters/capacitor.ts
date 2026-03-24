@@ -11,6 +11,7 @@ import type {
 import {
   fileExists,
   readJsonFile,
+  readTextFile,
   parseCapacitorConfig,
   parsePlist,
   parseAndroidManifest,
@@ -163,6 +164,24 @@ function buildIosConfig(
     "apple-app-site-association",
   );
 
+  // Extract new iOS fields from plist
+  const backgroundModes =
+    plist && Array.isArray(plist["UIBackgroundModes"])
+      ? (plist["UIBackgroundModes"] as string[])
+      : undefined;
+  const atsAllowsArbitraryLoads =
+    plist && typeof plist["NSAllowsArbitraryLoads"] === "boolean"
+      ? (plist["NSAllowsArbitraryLoads"] as boolean)
+      : undefined;
+  const minimumOSVersion =
+    plist && typeof plist["MinimumOSVersion"] === "string"
+      ? (plist["MinimumOSVersion"] as string)
+      : undefined;
+  const requiredDeviceCapabilities =
+    plist && Array.isArray(plist["UIRequiredDeviceCapabilities"])
+      ? (plist["UIRequiredDeviceCapabilities"] as string[])
+      : undefined;
+
   return {
     bundleId: appId,
     appName,
@@ -172,6 +191,10 @@ function buildIosConfig(
     usageDescriptions,
     capabilities,
     encryptionDeclared,
+    backgroundModes,
+    atsAllowsArbitraryLoads,
+    minimumOSVersion,
+    requiredDeviceCapabilities,
     aasaPath: fileExists(aasaPath) ? aasaPath : undefined,
     entitlementsPath: fileExists(entitlementsPath)
       ? entitlementsPath
@@ -237,6 +260,32 @@ function buildAndroidConfig(
     }
   }
 
+  // Extract foreground service types and exported components from manifest text
+  const manifestText = readTextFile(manifestPath);
+  let foregroundServiceTypes: string[] | undefined;
+  let hasExportedComponents: boolean | undefined;
+
+  if (manifestText) {
+    const fstMatches = manifestText.match(
+      /android:foregroundServiceType\s*=\s*["']([^"']+)["']/g,
+    );
+    if (fstMatches) {
+      foregroundServiceTypes = fstMatches
+        .map((m) => {
+          const val = m.match(/["']([^"']+)["']/);
+          return val ? val[1] : "";
+        })
+        .filter(Boolean);
+    }
+
+    // Check if any component with intent-filter has android:exported
+    const hasIntentFilterWithExported =
+      /android:exported\s*=\s*["'][^"']*["'][^>]*>[\s\S]*?<intent-filter|<intent-filter[\s\S]*?android:exported\s*=\s*["'][^"']*["']/.test(
+        manifestText,
+      );
+    hasExportedComponents = hasIntentFilterWithExported || undefined;
+  }
+
   return {
     packageId,
     appName,
@@ -246,6 +295,9 @@ function buildAndroidConfig(
     targetSdkVersion: 34,
     permissions,
     signingConfigured: false,
+    foregroundServiceTypes,
+    hasExportedComponents,
+    manifestPath,
     assetLinksPath: fileExists(assetLinksPath) ? assetLinksPath : undefined,
     assetLinksFingerprints:
       assetLinksFingerprints.length > 0 ? assetLinksFingerprints : undefined,

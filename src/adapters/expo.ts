@@ -114,6 +114,15 @@ export const expoAdapter: PlatformAdapter = {
         ? !infoPlist.ITSAppUsesNonExemptEncryption
         : false;
 
+    // Extract new iOS fields from infoPlist
+    const backgroundModes = Array.isArray(infoPlist.UIBackgroundModes)
+      ? (infoPlist.UIBackgroundModes as string[])
+      : undefined;
+    const atsAllowsArbitraryLoads =
+      typeof infoPlist.NSAllowsArbitraryLoads === "boolean"
+        ? (infoPlist.NSAllowsArbitraryLoads as boolean)
+        : undefined;
+
     // ── Icons ───────────────────────────────────────────────────────────────
     const icons: IconEntry[] = [];
     const iconPaths: { label: string; relativePath: string | undefined }[] = [
@@ -176,6 +185,8 @@ export const expoAdapter: PlatformAdapter = {
         usageDescriptions,
         capabilities: [],
         encryptionDeclared,
+        backgroundModes,
+        atsAllowsArbitraryLoads,
       },
     };
   },

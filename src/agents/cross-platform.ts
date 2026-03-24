@@ -4,6 +4,8 @@ import type {
   NormalizedAppConfig,
   RunOptions,
 } from "../types.js";
+import { fetchWithTimeout, readTextFile } from "../utils.js";
+import { join } from "node:path";
 
 export const crossPlatformAgent: ValidationAgent = {
   name: "cross-platform",
@@ -120,6 +122,153 @@ export const crossPlatformAgent: ValidationAgent = {
           severity: match ? "PASS" : "WARN",
           title: "Deep links match across platforms",
           message,
+        });
+      }
+    }
+
+    // ── cross.privacy-policy-content ──────────────────────────────────────
+    {
+      if (!config.privacyPolicyUrl) {
+        results.push({
+          id: "cross.privacy-policy-content",
+          agent: "cross-platform",
+          severity: "SKIP",
+          title: "Privacy policy content",
+          message: "No privacy policy URL configured",
+        });
+      } else if (_options.offline) {
+        results.push({
+          id: "cross.privacy-policy-content",
+          agent: "cross-platform",
+          severity: "SKIP",
+          title: "Privacy policy content",
+          message: "Offline mode; skipping privacy policy fetch",
+        });
+      } else {
+        try {
+          const res = await fetchWithTimeout(config.privacyPolicyUrl);
+          if (!res.ok) {
+            results.push({
+              id: "cross.privacy-policy-content",
+              agent: "cross-platform",
+              severity: "WARN",
+              title: "Privacy policy content",
+              message: `Privacy policy URL returned HTTP ${res.status}`,
+            });
+          } else if (res.body.length < 500) {
+            results.push({
+              id: "cross.privacy-policy-content",
+              agent: "cross-platform",
+              severity: "WARN",
+              title: "Privacy policy content",
+              message:
+                "Privacy policy page seems too short (less than 500 characters)",
+            });
+          } else {
+            const hasKeyTerms = /data|collect|privacy|information/i.test(
+              res.body,
+            );
+            if (!hasKeyTerms) {
+              results.push({
+                id: "cross.privacy-policy-content",
+                agent: "cross-platform",
+                severity: "WARN",
+                title: "Privacy policy content",
+                message:
+                  "Privacy policy may not contain required disclosures (missing key terms: data, collect, privacy, information)",
+              });
+            } else {
+              results.push({
+                id: "cross.privacy-policy-content",
+                agent: "cross-platform",
+                severity: "PASS",
+                title: "Privacy policy content",
+                message: "Privacy policy contains expected disclosure terms",
+              });
+            }
+          }
+        } catch {
+          results.push({
+            id: "cross.privacy-policy-content",
+            agent: "cross-platform",
+            severity: "WARN",
+            title: "Privacy policy content",
+            message: `Failed to fetch privacy policy URL: ${config.privacyPolicyUrl}`,
+          });
+        }
+      }
+    }
+
+    // ── cross.placeholder-content ─────────────────────────────────────────
+    {
+      const configFiles = [
+        "twa-manifest.json",
+        "capacitor.config.ts",
+        "capacitor.config.json",
+        "app.json",
+        "pubspec.yaml",
+        "public/manifest.json",
+      ];
+
+      const placeholderPattern =
+        /lorem ipsum|test app|sample app|example app|placeholder text|dummy data/i;
+      const filesWithPlaceholders: string[] = [];
+
+      for (const file of configFiles) {
+        const content = readTextFile(join(config.projectRoot, file));
+        if (content && placeholderPattern.test(content)) {
+          filesWithPlaceholders.push(file);
+        }
+      }
+
+      if (config.storeListingPath) {
+        const listingContent = readTextFile(config.storeListingPath);
+        if (listingContent && placeholderPattern.test(listingContent)) {
+          filesWithPlaceholders.push(config.storeListingPath);
+        }
+      }
+
+      if (filesWithPlaceholders.length > 0) {
+        results.push({
+          id: "cross.placeholder-content",
+          agent: "cross-platform",
+          severity: "FAIL",
+          title: "Placeholder content",
+          message: `Placeholder content found in: ${filesWithPlaceholders.join(", ")}`,
+        });
+      } else {
+        results.push({
+          id: "cross.placeholder-content",
+          agent: "cross-platform",
+          severity: "PASS",
+          title: "Placeholder content",
+          message: "No placeholder content detected in config files",
+        });
+      }
+    }
+
+    // ── cross.minimum-functionality ───────────────────────────────────────
+    {
+      const isWebWrapper =
+        config.platform === "twa" || config.platform === "capacitor";
+
+      if (isWebWrapper) {
+        results.push({
+          id: "cross.minimum-functionality",
+          agent: "cross-platform",
+          severity: "WARN",
+          title: "Minimum functionality",
+          message:
+            "TWA/Capacitor apps may trigger Apple Guideline 4.2 (Minimum Functionality). Ensure your app provides features beyond what the website offers.",
+          docs: "https://developer.apple.com/app-store/review/guidelines/#minimum-functionality",
+        });
+      } else {
+        results.push({
+          id: "cross.minimum-functionality",
+          agent: "cross-platform",
+          severity: "PASS",
+          title: "Minimum functionality",
+          message: "Not a web-wrapper platform; Guideline 4.2 less likely",
         });
       }
     }

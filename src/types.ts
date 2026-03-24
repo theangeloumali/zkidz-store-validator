@@ -35,6 +35,9 @@ export interface AndroidConfig {
   targetSdkVersion: number;
   permissions: string[];
   signingConfigured: boolean;
+  foregroundServiceTypes?: string[];
+  hasExportedComponents?: boolean;
+  manifestPath?: string;
   assetLinksPath?: string;
   assetLinksFingerprints?: string[];
   manifestFingerprints?: string[];
@@ -50,6 +53,10 @@ export interface IosConfig {
   usageDescriptions: Record<string, string>;
   capabilities: string[];
   encryptionDeclared: boolean;
+  backgroundModes?: string[];
+  atsAllowsArbitraryLoads?: boolean;
+  minimumOSVersion?: string;
+  requiredDeviceCapabilities?: string[];
   aasaPath?: string;
   entitlementsPath?: string;
 }

@@ -1,3 +1,6 @@
+import * as fs from "node:fs";
+import * as path from "node:path";
+
 import type {
   CheckResult,
   NormalizedAppConfig,
@@ -303,6 +306,250 @@ export const iosComplianceAgent: ValidationAgent = {
         severity: "SKIP",
         title: "Apple App Site Association",
         message: "No aasaPath configured",
+      });
+    }
+
+    // 10. Background modes evidence
+    const backgroundModeEvidence: Record<string, RegExp> = {
+      audio: /AVAudioSession|AudioContext|<audio|useAudio|audioSession/,
+      location:
+        /CLLocationManager|geolocation|watchPosition|startUpdatingLocation|getCurrentPosition/,
+      fetch:
+        /BGAppRefreshTask|performFetchWithCompletionHandler|setMinimumBackgroundFetchInterval|background.*fetch/i,
+      "remote-notification":
+        /registerForRemoteNotifications|didReceiveRemoteNotification|pushNotification|PushNotifications/,
+      voip: /PKPushRegistry|pushkit|CallKit/,
+      "bluetooth-central": /CBCentralManager|BleManager|bluetooth/i,
+      "bluetooth-peripheral": /CBPeripheralManager/,
+      processing: /BGProcessingTask/,
+      "external-accessory": /EAAccessoryManager/,
+    };
+
+    if (ios.backgroundModes && ios.backgroundModes.length > 0) {
+      let allModesHaveEvidence = true;
+      for (const mode of ios.backgroundModes) {
+        const pattern = backgroundModeEvidence[mode];
+        if (!pattern) {
+          // Unknown mode — warn but don't fail
+          results.push({
+            id: "ios.background-modes",
+            agent: AGENT,
+            severity: "WARN",
+            title: "Background mode evidence",
+            message: `Unknown background mode "${mode}" declared — cannot verify source evidence`,
+          });
+          continue;
+        }
+        const hasEvidence = grepSourceFiles(config.sourceCodeDirs, pattern);
+        if (!hasEvidence) {
+          allModesHaveEvidence = false;
+          results.push({
+            id: "ios.background-modes",
+            agent: AGENT,
+            severity: "FAIL",
+            title: "Background mode evidence",
+            message: `Background mode "${mode}" is declared but no matching API usage found in source (high rejection risk)`,
+            docs: "https://developer.apple.com/documentation/bundleresources/information_property_list/uibackgroundmodes",
+          });
+        }
+      }
+      if (allModesHaveEvidence) {
+        results.push({
+          id: "ios.background-modes",
+          agent: AGENT,
+          severity: "PASS",
+          title: "Background mode evidence",
+          message: `All ${ios.backgroundModes.length} declared background mode(s) have source code evidence`,
+        });
+      }
+    } else {
+      results.push({
+        id: "ios.background-modes",
+        agent: AGENT,
+        severity: "PASS",
+        title: "Background modes",
+        message: "No background modes declared",
+      });
+    }
+
+    // 11. Privacy manifest (PrivacyInfo.xcprivacy)
+    const iosDir = path.join(config.projectRoot, "ios");
+    let privacyManifestFound = false;
+
+    function searchForPrivacyManifest(dir: string): boolean {
+      if (!fs.existsSync(dir)) return false;
+      const entries = fs.readdirSync(dir, { withFileTypes: true });
+      for (const entry of entries) {
+        if (entry.isFile() && entry.name === "PrivacyInfo.xcprivacy") {
+          return true;
+        }
+        if (entry.isDirectory()) {
+          if (searchForPrivacyManifest(path.join(dir, entry.name))) {
+            return true;
+          }
+        }
+      }
+      return false;
+    }
+
+    if (fs.existsSync(iosDir)) {
+      privacyManifestFound = searchForPrivacyManifest(iosDir);
+    }
+
+    if (!privacyManifestFound) {
+      results.push({
+        id: "ios.privacy-manifest",
+        agent: AGENT,
+        severity: "WARN",
+        title: "Privacy manifest",
+        message:
+          "PrivacyInfo.xcprivacy not found in ios/ directory (required since 2024 for apps using certain APIs)",
+        docs: "https://developer.apple.com/documentation/bundleresources/privacy_manifest_files",
+      });
+    } else {
+      results.push({
+        id: "ios.privacy-manifest",
+        agent: AGENT,
+        severity: "PASS",
+        title: "Privacy manifest",
+        message: "PrivacyInfo.xcprivacy found",
+      });
+    }
+
+    // 12. ATT tracking
+    const trackingPattern =
+      /advertisingIdentifier|ASIdentifierManager|ATTrackingManager|requestTrackingAuthorization|idfa|IDFA/;
+    const usesTracking = grepSourceFiles(
+      config.sourceCodeDirs,
+      trackingPattern,
+    );
+    const hasTrackingDescription =
+      "NSUserTrackingUsageDescription" in ios.usageDescriptions;
+
+    if (usesTracking && !hasTrackingDescription) {
+      results.push({
+        id: "ios.att-tracking",
+        agent: AGENT,
+        severity: "FAIL",
+        title: "App Tracking Transparency",
+        message:
+          "Source code uses IDFA/ATT APIs but NSUserTrackingUsageDescription is not declared",
+        docs: "https://developer.apple.com/documentation/apptrackingtransparency",
+      });
+    } else if (usesTracking && hasTrackingDescription) {
+      results.push({
+        id: "ios.att-tracking",
+        agent: AGENT,
+        severity: "PASS",
+        title: "App Tracking Transparency",
+        message:
+          "IDFA/ATT usage detected and NSUserTrackingUsageDescription is declared",
+      });
+    } else {
+      results.push({
+        id: "ios.att-tracking",
+        agent: AGENT,
+        severity: "PASS",
+        title: "App Tracking Transparency",
+        message: "No IDFA/ATT usage detected in source code",
+      });
+    }
+
+    // 13. ATS exceptions
+    if (ios.atsAllowsArbitraryLoads === true) {
+      results.push({
+        id: "ios.ats-exceptions",
+        agent: AGENT,
+        severity: "WARN",
+        title: "ATS exceptions",
+        message:
+          "NSAllowsArbitraryLoads is enabled. Apple may reject without justification.",
+        docs: "https://developer.apple.com/documentation/bundleresources/information_property_list/nsapptransportsecurity",
+      });
+    } else {
+      results.push({
+        id: "ios.ats-exceptions",
+        agent: AGENT,
+        severity: "PASS",
+        title: "ATS exceptions",
+        message: "App Transport Security is not bypassed",
+      });
+    }
+
+    // 14. Minimum deployment target
+    if (ios.minimumOSVersion) {
+      const majorVersion = parseInt(ios.minimumOSVersion.split(".")[0], 10);
+      if (!isNaN(majorVersion) && majorVersion < 16) {
+        results.push({
+          id: "ios.min-deployment-target",
+          agent: AGENT,
+          severity: "WARN",
+          title: "Minimum deployment target",
+          message: `Minimum deployment target ${ios.minimumOSVersion} is below iOS 16. Consider updating.`,
+          docs: "https://developer.apple.com/documentation/xcode/setting-the-minimum-deployment-target",
+        });
+      } else {
+        results.push({
+          id: "ios.min-deployment-target",
+          agent: AGENT,
+          severity: "PASS",
+          title: "Minimum deployment target",
+          message: `Minimum deployment target is ${ios.minimumOSVersion}`,
+        });
+      }
+    } else {
+      results.push({
+        id: "ios.min-deployment-target",
+        agent: AGENT,
+        severity: "PASS",
+        title: "Minimum deployment target",
+        message: "No minimum OS version specified",
+      });
+    }
+
+    // 15. Required device capabilities
+    if (
+      ios.requiredDeviceCapabilities &&
+      ios.requiredDeviceCapabilities.length > 0
+    ) {
+      const restrictive = [
+        "metal",
+        "arkit",
+        "nfc",
+        "accelerometer",
+        "gyroscope",
+        "magnetometer",
+        "healthkit",
+      ];
+      const declaredRestrictive = ios.requiredDeviceCapabilities.filter((cap) =>
+        restrictive.includes(cap),
+      );
+
+      if (declaredRestrictive.length > 0) {
+        results.push({
+          id: "ios.required-device-capabilities",
+          agent: AGENT,
+          severity: "WARN",
+          title: "Required device capabilities",
+          message: `Declared capabilities may limit device compatibility: ${declaredRestrictive.join(", ")}`,
+          docs: "https://developer.apple.com/documentation/bundleresources/information_property_list/uirequireddevicecapabilities",
+        });
+      } else {
+        results.push({
+          id: "ios.required-device-capabilities",
+          agent: AGENT,
+          severity: "PASS",
+          title: "Required device capabilities",
+          message: `Declared capabilities: ${ios.requiredDeviceCapabilities.join(", ")}`,
+        });
+      }
+    } else {
+      results.push({
+        id: "ios.required-device-capabilities",
+        agent: AGENT,
+        severity: "PASS",
+        title: "Required device capabilities",
+        message: "No restrictive device capabilities declared",
       });
     }
 

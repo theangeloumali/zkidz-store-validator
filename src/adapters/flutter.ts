@@ -113,6 +113,31 @@ export const flutterAdapter: PlatformAdapter = {
       gradleConfig?.applicationId ?? manifest?.packageId ?? "";
     const androidPermissions = manifest?.permissions ?? [];
 
+    // Extract new Android fields from manifest text
+    const manifestText = readTextFile(manifestPath);
+    let foregroundServiceTypes: string[] | undefined;
+    let hasExportedComponents: boolean | undefined;
+
+    if (manifestText) {
+      const fstMatches = manifestText.match(
+        /android:foregroundServiceType\s*=\s*["']([^"']+)["']/g,
+      );
+      if (fstMatches) {
+        foregroundServiceTypes = fstMatches
+          .map((m) => {
+            const val = m.match(/["']([^"']+)["']/);
+            return val ? val[1] : "";
+          })
+          .filter(Boolean);
+      }
+
+      const hasIntentFilterWithExported =
+        /android:exported\s*=\s*["'][^"']*["'][^>]*>[\s\S]*?<intent-filter|<intent-filter[\s\S]*?android:exported\s*=\s*["'][^"']*["']/.test(
+          manifestText,
+        );
+      hasExportedComponents = hasIntentFilterWithExported || undefined;
+    }
+
     // ── iOS config ──────────────────────────────────────────────────────────
     const infoPlistPath = path.join(cwd, "ios", "Runner", "Info.plist");
     const plistData = parsePlist(infoPlistPath);
@@ -147,6 +172,24 @@ export const flutterAdapter: PlatformAdapter = {
       plistData && typeof plistData.ITSAppUsesNonExemptEncryption === "boolean"
         ? !plistData.ITSAppUsesNonExemptEncryption
         : false;
+
+    // Extract new iOS fields from plist
+    const backgroundModes =
+      plistData && Array.isArray(plistData["UIBackgroundModes"])
+        ? (plistData["UIBackgroundModes"] as string[])
+        : undefined;
+    const atsAllowsArbitraryLoads =
+      plistData && typeof plistData["NSAllowsArbitraryLoads"] === "boolean"
+        ? (plistData["NSAllowsArbitraryLoads"] as boolean)
+        : undefined;
+    const minimumOSVersion =
+      plistData && typeof plistData["MinimumOSVersion"] === "string"
+        ? (plistData["MinimumOSVersion"] as string)
+        : undefined;
+    const requiredDeviceCapabilities =
+      plistData && Array.isArray(plistData["UIRequiredDeviceCapabilities"])
+        ? (plistData["UIRequiredDeviceCapabilities"] as string[])
+        : undefined;
 
     // Extract capabilities from entitlements
     const capabilities: string[] = [];
@@ -236,6 +279,9 @@ export const flutterAdapter: PlatformAdapter = {
         targetSdkVersion: gradleConfig?.targetSdkVersion ?? 34,
         permissions: androidPermissions,
         signingConfigured: gradleConfig?.hasSigningConfig ?? false,
+        foregroundServiceTypes,
+        hasExportedComponents,
+        manifestPath: fileExists(manifestPath) ? manifestPath : undefined,
       },
       ios: {
         bundleId: iosBundleId,
@@ -246,6 +292,10 @@ export const flutterAdapter: PlatformAdapter = {
         usageDescriptions,
         capabilities,
         encryptionDeclared,
+        backgroundModes,
+        atsAllowsArbitraryLoads,
+        minimumOSVersion,
+        requiredDeviceCapabilities,
         entitlementsPath: fileExists(entitlementsPath)
           ? entitlementsPath
           : undefined,

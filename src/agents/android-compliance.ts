@@ -304,6 +304,118 @@ export const androidComplianceAgent: ValidationAgent = {
       });
     }
 
+    // 12. Foreground service types (SDK 34+)
+    {
+      const dangerousPerms = [
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "RECORD_AUDIO",
+        "CAMERA",
+        "BODY_SENSORS",
+      ];
+      const hasDangerous = android.permissions.some((p) =>
+        dangerousPerms.some((dp) => p.includes(dp)),
+      );
+
+      if (android.targetSdkVersion >= 34 && hasDangerous) {
+        if (
+          !android.foregroundServiceTypes ||
+          android.foregroundServiceTypes.length === 0
+        ) {
+          results.push({
+            id: "android.foreground-service-types",
+            agent: AGENT,
+            severity: "WARN",
+            title: "Foreground service types",
+            message:
+              "Dangerous permissions declared but no foreground service types specified (required for targetSdk 34+)",
+            docs: "https://developer.android.com/about/versions/14/changes/fgs-types-required",
+          });
+        } else {
+          results.push({
+            id: "android.foreground-service-types",
+            agent: AGENT,
+            severity: "PASS",
+            title: "Foreground service types",
+            message: `Foreground service types declared: ${android.foregroundServiceTypes.join(", ")}`,
+          });
+        }
+      } else {
+        results.push({
+          id: "android.foreground-service-types",
+          agent: AGENT,
+          severity: "PASS",
+          title: "Foreground service types",
+          message: hasDangerous
+            ? "targetSdkVersion < 34; foreground service type declaration not yet required"
+            : "No dangerous permissions declared",
+        });
+      }
+    }
+
+    // 13. Exported components
+    {
+      if (android.hasExportedComponents === undefined) {
+        results.push({
+          id: "android.exported-components",
+          agent: AGENT,
+          severity: "SKIP",
+          title: "Exported components",
+          message: "No manifest parsed; cannot verify exported attribute",
+        });
+      } else if (!android.hasExportedComponents) {
+        results.push({
+          id: "android.exported-components",
+          agent: AGENT,
+          severity: "WARN",
+          title: "Exported components",
+          message:
+            "Components with intent-filters missing explicit android:exported attribute",
+          docs: "https://developer.android.com/guide/topics/manifest/activity-element#exported",
+        });
+      } else {
+        results.push({
+          id: "android.exported-components",
+          agent: AGENT,
+          severity: "PASS",
+          title: "Exported components",
+          message:
+            "All components with intent-filters have explicit android:exported attribute",
+        });
+      }
+    }
+
+    // 14. Internet permission for web-wrapper apps
+    {
+      const hasInternet = android.permissions.some((p) =>
+        p.includes("INTERNET"),
+      );
+      const isWebWrapper =
+        config.platform === "twa" || config.platform === "capacitor";
+
+      if (isWebWrapper && !hasInternet) {
+        results.push({
+          id: "android.internet-permission",
+          agent: AGENT,
+          severity: "WARN",
+          title: "Internet permission",
+          message:
+            "INTERNET permission not declared. TWA/Capacitor apps require network access",
+          docs: "https://developer.android.com/reference/android/Manifest.permission#INTERNET",
+        });
+      } else {
+        results.push({
+          id: "android.internet-permission",
+          agent: AGENT,
+          severity: "PASS",
+          title: "Internet permission",
+          message: hasInternet
+            ? "INTERNET permission declared"
+            : "Not a web-wrapper app; INTERNET permission is optional",
+        });
+      }
+    }
+
     return results;
   },
 };
