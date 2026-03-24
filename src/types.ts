@@ -95,10 +95,7 @@ export interface RunOptions {
 /** Interface that all validation agents implement */
 export interface ValidationAgent {
   name: string;
-  run(
-    config: NormalizedAppConfig,
-    options: RunOptions,
-  ): Promise<CheckResult[]>;
+  run(config: NormalizedAppConfig, options: RunOptions): Promise<CheckResult[]>;
 }
 
 /** Interface that all platform adapters implement */
