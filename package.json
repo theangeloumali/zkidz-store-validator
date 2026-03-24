@@ -1,0 +1,47 @@
+{
+  "name": "store-validator",
+  "version": "1.0.0",
+  "description": "Pre-submission validation for App Store and Play Store — supports TWA, Capacitor, Expo, and Flutter",
+  "bin": {
+    "store-validator": "./dist/cli.js"
+  },
+  "files": [
+    "dist/"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx src/cli.ts",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage",
+    "prepublishOnly": "npm run build",
+    "format": "prettier --write \"src/**/*.ts\" \"__tests__/**/*.ts\""
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": [
+    "app-store",
+    "play-store",
+    "validation",
+    "mobile",
+    "expo",
+    "flutter",
+    "capacitor",
+    "twa",
+    "submission",
+    "review"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "yaml": "^2.7.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "jest": "^29.7.0",
+    "prettier": "^3.4.0",
+    "ts-jest": "^29.2.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0"
+  }
+}
