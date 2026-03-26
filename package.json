@@ -1,6 +1,6 @@
 {
   "name": "store-validator",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "Pre-submission validation for App Store and Play Store — supports TWA, Capacitor, Expo, and Flutter",
   "bin": {
     "store-validator": "./dist/cli.js"
