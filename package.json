@@ -32,6 +32,14 @@
     "submission",
     "review"
   ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/theangeloumali/zkidz-store-validator.git"
+  },
+  "homepage": "https://github.com/theangeloumali/zkidz-store-validator#readme",
+  "bugs": {
+    "url": "https://github.com/theangeloumali/zkidz-store-validator/issues"
+  },
   "license": "MIT",
   "dependencies": {
     "yaml": "^2.7.0"
